@@ -75,6 +75,16 @@ private data class ChangelogEntry(val version: String, val date: String, val ite
 
 private val CHANGELOG = listOf(
     ChangelogEntry(
+        version = "1.0.5",
+        date = "2026-11-03",
+        items = listOf(
+            "改为系统动态壁纸：由 WallpaperService 按时间段直接绘制",
+            "去掉定时任务、后台服务与「后台运行」相关设置",
+            "桌面与锁屏按解锁状态实时切换，不再写系统壁纸",
+            "「应用壁纸」直接进系统预览页；被系统拦截时自动回落到壁纸列表",
+        ),
+    ),
+    ChangelogEntry(
         version = "1.0.0",
         date = "2026-11-02",
         items = listOf(

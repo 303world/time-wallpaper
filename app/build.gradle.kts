@@ -20,22 +20,26 @@ android {
         applicationId = "io.github.world303.timewallpaper"
         minSdk = 33
         targetSdk = 36
-        versionCode = 5
-        versionName = "1.0.4"
+        versionCode = 6
+        versionName = "1.0.5"
     }
 
     signingConfigs {
-        create("release") {
-            storeFile = rootProject.file(localProps.getProperty("TW_STORE_FILE", "keystore/timewallpaper.jks"))
-            storePassword = localProps.getProperty("TW_STORE_PASSWORD", "")
-            keyAlias = localProps.getProperty("TW_KEY_ALIAS", "timewallpaper")
-            keyPassword = localProps.getProperty("TW_KEY_PASSWORD", "")
+        // Local builds sign with the real keystore; CI (no keystore checked in) produces an
+        // unsigned release APK that gets signed afterwards with apksigner.
+        if (rootProject.file(localProps.getProperty("TW_STORE_FILE", "keystore/timewallpaper.jks")).exists()) {
+            create("release") {
+                storeFile = rootProject.file(localProps.getProperty("TW_STORE_FILE", "keystore/timewallpaper.jks"))
+                storePassword = localProps.getProperty("TW_STORE_PASSWORD", "")
+                keyAlias = localProps.getProperty("TW_KEY_ALIAS", "timewallpaper")
+                keyPassword = localProps.getProperty("TW_KEY_PASSWORD", "")
+            }
         }
     }
 
     buildTypes {
         release {
-            signingConfig = signingConfigs.getByName("release")
+            signingConfig = signingConfigs.findByName("release")
             isMinifyEnabled = true
             isShrinkResources = true
             proguardFiles(
@@ -64,7 +68,6 @@ android {
 
 dependencies {
     implementation("androidx.core:core-ktx:1.19.1")
-    implementation("androidx.work:work-runtime-ktx:2.12.0")
     implementation("androidx.activity:activity-compose:1.13.0")
     implementation("androidx.lifecycle:lifecycle-runtime-compose:2.11.0")
     implementation("androidx.exifinterface:exifinterface:1.4.1")

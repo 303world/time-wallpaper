@@ -5,7 +5,6 @@ import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
 import androidx.activity.enableEdgeToEdge
 import io.github.world303.timewallpaper.core.AppGraph
-import io.github.world303.timewallpaper.core.alarm.AlarmScheduler
 import io.github.world303.timewallpaper.ui.AppRoot
 import io.github.world303.timewallpaper.ui.theme.TimeWallpaperTheme
 
@@ -19,15 +18,6 @@ class MainActivity : ComponentActivity() {
             TimeWallpaperTheme {
                 AppRoot()
             }
-        }
-    }
-
-    override fun onResume() {
-        super.onResume()
-        // Some ROMs drop alarms while the app is in the background; re-arming is idempotent and
-        // costs nothing, so do it every time the user opens the app.
-        if (AppGraph.isReady) {
-            AlarmScheduler.scheduleNext(this)
         }
     }
 }

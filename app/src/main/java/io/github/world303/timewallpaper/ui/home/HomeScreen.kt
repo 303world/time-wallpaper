@@ -75,7 +75,6 @@ fun rememberMinuteOfDay(): Int {
 fun HomeScreen(
     state: AppState,
     screenSize: Pair<Int, Int>,
-    isApplying: Boolean,
     target: WallpaperTarget,
     onTargetChange: (WallpaperTarget) -> Unit,
     onToggleAuto: (Boolean) -> Unit,
@@ -109,7 +108,6 @@ fun HomeScreen(
                     state = state,
                     currentSlot = currentSlot,
                     nextLabel = nextLabel,
-                    isApplying = isApplying,
                     target = target,
                     onTargetChange = onTargetChange,
                     onToggleAuto = onToggleAuto,
@@ -161,7 +159,6 @@ private fun HeroCard(
     state: AppState,
     currentSlot: WallpaperSlot?,
     nextLabel: String,
-    isApplying: Boolean,
     target: WallpaperTarget,
     onTargetChange: (WallpaperTarget) -> Unit,
     onToggleAuto: (Boolean) -> Unit,
@@ -250,18 +247,6 @@ private fun HeroCard(
                     style = MiuixTheme.textStyles.footnote2,
                 )
             }
-            if (isApplying) {
-                Box(
-                    modifier = Modifier
-                        .align(Alignment.TopStart)
-                        .padding(12.dp)
-                        .clip(RoundedCornerShape(20.dp))
-                        .background(Color(0x66000000))
-                        .padding(horizontal = 10.dp, vertical = 6.dp),
-                ) {
-                    Text("设置中…", color = Color.White, style = MiuixTheme.textStyles.footnote2)
-                }
-            }
         }
         Row(
             modifier = Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 12.dp),
@@ -294,17 +279,11 @@ private fun HeroCard(
             }
             Button(
                 onClick = onApplyNow,
-                enabled = !isApplying && canApply,
+                enabled = canApply,
                 modifier = Modifier.fillMaxWidth(),
                 colors = ButtonDefaults.buttonColorsPrimary(),
             ) {
-                Text(
-                    when {
-                        isApplying -> "正在设置…"
-                        !canApply -> "请先补全所有时间段"
-                        else -> "设为壁纸"
-                    },
-                )
+                Text(if (canApply) "应用壁纸" else "请先补全所有时间段")
             }
         }
     }

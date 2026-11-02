@@ -2,6 +2,7 @@ package io.github.world303.timewallpaper.ui
 
 import android.app.Activity
 import android.content.Intent
+import android.os.SystemClock
 import androidx.activity.compose.BackHandler
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.PickVisualMediaRequest
@@ -27,9 +28,11 @@ import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.pager.HorizontalPager
 import androidx.compose.foundation.pager.rememberPagerState
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableIntStateOf
+import androidx.compose.runtime.mutableLongStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
@@ -40,18 +43,20 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.unit.dp
 import androidx.core.net.toUri
+import androidx.lifecycle.Lifecycle
+import androidx.lifecycle.LifecycleEventObserver
+import androidx.lifecycle.compose.LocalLifecycleOwner
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.kyant.backdrop.backdrops.layerBackdrop
 import com.kyant.backdrop.backdrops.rememberLayerBackdrop
 import io.github.world303.timewallpaper.BuildConfig
 import io.github.world303.timewallpaper.core.AppGraph
-import io.github.world303.timewallpaper.core.alarm.AlarmScheduler
-import io.github.world303.timewallpaper.core.compat.OemCompat
 import io.github.world303.timewallpaper.core.model.MAX_POINTS
 import io.github.world303.timewallpaper.core.model.WallpaperSlot
 import io.github.world303.timewallpaper.core.model.minuteLabel
 import io.github.world303.timewallpaper.core.update.UpdateChecker
 import io.github.world303.timewallpaper.core.wallpaper.WallpaperApplier
+import io.github.world303.timewallpaper.core.wallpaper.LiveWallpaper
 import io.github.world303.timewallpaper.core.wallpaper.WallpaperStore
 import io.github.world303.timewallpaper.ui.component.liquid.LiquidBottomTab
 import io.github.world303.timewallpaper.ui.component.liquid.LiquidBottomTabs
@@ -64,6 +69,7 @@ import io.github.world303.timewallpaper.ui.settings.AboutScreen
 import io.github.world303.timewallpaper.ui.settings.PointManagerDialog
 import io.github.world303.timewallpaper.ui.settings.SettingsScreen
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 import top.yukonga.miuix.kmp.basic.Icon
@@ -94,7 +100,7 @@ fun AppRoot() {
     var cropUri by rememberSaveable { mutableStateOf<String?>(null) }
     var cropSlot by rememberSaveable { mutableIntStateOf(0) }
     var cropTarget by rememberSaveable { mutableStateOf(WallpaperTarget.HOME) }
-    var isApplying by remember { mutableStateOf(false) }
+    var applyStartedAt by remember { mutableLongStateOf(0L) }
     var recentTick by remember { mutableIntStateOf(0) }
 
     val screenSize = remember { WallpaperApplier.targetSize(context) }
@@ -121,20 +127,52 @@ fun AppRoot() {
     }
 
     fun toggleAuto(enabled: Boolean) {
+        // The live wallpaper service watches the state flow, so the change is on screen instantly.
         repo.update { it.copy(autoSwitch = enabled) }
-        if (enabled) {
-            AlarmScheduler.scheduleNext(context)
-        } else {
-            AlarmScheduler.cancel(context)
+    }
+
+    /**
+     * Opens the system live-wallpaper screen for our service.
+     *
+     * HyperOS/MIUI swallows CHANGE_LIVE_WALLPAPER for third-party apps: the livepicker activity
+     * checks a MIUI app-op, and since that op is "ignore" it calls finish() before drawing
+     * anything. We come back to this activity within a couple of hundred milliseconds with no
+     * wallpaper set, which is exactly what "the button does nothing" looked like. Detect that and
+     * open the picker list instead of leaving a dead button behind.
+     */
+    fun applyWallpaper() {
+        if (applyStartedAt != 0L) return
+        if (!LiveWallpaper.openPreview(context)) {
+            if (!LiveWallpaper.openChooser(context)) toast("系统没有动态壁纸选择器")
+            return
         }
+        applyStartedAt = SystemClock.elapsedRealtime()
+    }
+
+    val lifecycleOwner = LocalLifecycleOwner.current
+    DisposableEffect(lifecycleOwner) {
+        val observer = LifecycleEventObserver { _, event ->
+            if (event == Lifecycle.Event.ON_RESUME && applyStartedAt != 0L) {
+                val elapsed = SystemClock.elapsedRealtime() - applyStartedAt
+                applyStartedAt = 0L
+                scope.launch {
+                    delay(600)
+                    if (LiveWallpaper.isCurrent(context)) {
+                        toast("已设为动态壁纸")
+                    } else if (elapsed < 1500) {
+                        toast("系统不允许直接打开预览，请在列表里选「时间壁纸」")
+                        LiveWallpaper.openChooser(context)
+                    }
+                }
+            }
+        }
+        lifecycleOwner.lifecycle.addObserver(observer)
+        onDispose { lifecycleOwner.lifecycle.removeObserver(observer) }
     }
 
     fun changeSeparateLock(enabled: Boolean) {
+        // The service re-reads separateLock on the next frame; no system wallpaper call needed.
         repo.update { it.copy(separateLock = enabled) }
-        // Never touch FLAG_LOCK on the way out: clear(FLAG_LOCK) resets the lock wallpaper to the
-        // system default, and writing SYSTEM|LOCK overwrites the user's own lock wallpaper.
-        scope.launch { WallpaperApplier.applyCurrent(context, force = true) }
-
     }
 
     fun addPoint(minute: Int) {
@@ -146,7 +184,6 @@ fun AppRoot() {
                 repo.update { s ->
                     s.copy(slots = (s.slots + WallpaperSlot(minute)).sortedBy { it.startMinute })
                 }
-                AlarmScheduler.scheduleNext(context)
             }
         }
     }
@@ -161,7 +198,6 @@ fun AppRoot() {
             s.copy(slots = s.slots.map { if (it.startMinute == old) it.copy(startMinute = new) else it }
                 .sortedBy { it.startMinute })
         }
-        AlarmScheduler.scheduleNext(context)
     }
 
     fun removePoint(minute: Int) {
@@ -171,7 +207,6 @@ fun AppRoot() {
             return
         }
         repo.update { s -> s.copy(slots = s.slots.filterNot { it.startMinute == minute }) }
-        AlarmScheduler.scheduleNext(context)
     }
 
     fun deleteRecent(imageId: String) {
@@ -228,7 +263,6 @@ fun AppRoot() {
     }
 
     LaunchedEffect(Unit) {
-        runCatching { WallpaperApplier.applyCurrent(context, force = false) }
         // Housekeeping: drop old unreferenced crops and stale hidden ids.
         WallpaperStore.prune(context, repo.state.value)
         repo.update { it.copy(hiddenRecentIds = it.hiddenRecentIds.filter { id -> id in WallpaperStore.liveIds(context) }) }
@@ -239,7 +273,6 @@ fun AppRoot() {
             onFinish = {
                 repo.update { it.copy(onboarded = true) }
                 onboarded = true
-                AlarmScheduler.scheduleNext(context)
             },
         )
         return
@@ -267,8 +300,6 @@ fun AppRoot() {
                 cropUri = null
                 recentTick++
                 WallpaperStore.prune(context, repo.state.value)
-                AlarmScheduler.scheduleNext(context)
-                scope.launch { WallpaperApplier.applyCurrent(context, force = true) }
             },
         )
         return
@@ -307,21 +338,15 @@ fun AppRoot() {
                             HomeScreen(
                                 state = state,
                                 screenSize = screenSize,
-                                isApplying = isApplying,
                                 target = target,
                                 onTargetChange = { target = it },
                                 onToggleAuto = ::toggleAuto,
                                 onApplyNow = {
                                     val snapshot = repo.state.value
                                     if (!snapshot.isComplete()) {
-                                        toast("还有 ${snapshot.homeMissingCount() + snapshot.lockMissingCount()} 个时间段没有设置壁纸，先补全再应用")
-                                    } else if (!isApplying) {
-                                        isApplying = true
-                                        scope.launch {
-                                            val result = WallpaperApplier.applyCurrent(context, force = true)
-                                            isApplying = false
-                                            result.message?.let { toast(it) }
-                                        }
+                                        toast("还有 ${snapshot.homeMissingCount() + snapshot.lockMissingCount()} 个时间段没有设置壁纸")
+                                    } else {
+                                        applyWallpaper()
                                     }
                                 },
                                 onSlotClick = { slot, slotTarget ->
@@ -352,7 +377,6 @@ fun AppRoot() {
                                                     )
                                                 }
                                                 pickerForSlot = null
-                                                scope.launch { WallpaperApplier.applyCurrent(context, force = false) }
                                             },
                                             onDeleteRecent = ::deleteRecent,
                                         )
@@ -365,28 +389,6 @@ fun AppRoot() {
                                 onToggleSeparateLock = ::changeSeparateLock,
                                 onManagePoints = { showPoints = true },
                                 onAbout = { aboutOpen = true },
-                                onRequestBattery = {
-                                    runCatching { context.startActivity(OemCompat.batteryOptimizationIntent(context)) }
-                                        .onFailure { toast("无法打开电池优化设置") }
-                                },
-                                onOpenAutoStart = {
-                                    if (!OemCompat.openAutoStart(context)) {
-                                        toast("无法打开自启动设置，请到系统设置中手动允许")
-                                    }
-                                },
-                                onRequestExactAlarm = {
-                                    if (android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.S) {
-                                        runCatching {
-                                            context.startActivity(
-                                                Intent(android.provider.Settings.ACTION_REQUEST_SCHEDULE_EXACT_ALARM)
-                                                    .setData("package:${context.packageName}".toUri())
-                                                    .addFlags(Intent.FLAG_ACTIVITY_NEW_TASK),
-                                            )
-                                        }.onFailure { toast("无法打开精确闹钟设置") }
-                                    } else {
-                                        toast("当前系统无需额外授权")
-                                    }
-                                },
                                 overlay = {
                                     PointManagerDialog(
                                         show = showPoints,
