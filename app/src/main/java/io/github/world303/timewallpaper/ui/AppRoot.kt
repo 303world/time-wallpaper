@@ -131,12 +131,9 @@ fun AppRoot() {
 
     fun changeSeparateLock(enabled: Boolean) {
         repo.update { it.copy(separateLock = enabled) }
-        scope.launch {
-            if (!enabled) {
-                WallpaperApplier.clearLockWallpaper(context)
-            }
-            WallpaperApplier.applyCurrent(context, force = true)
-        }
+        // applyCurrent sets SYSTEM|LOCK together when separate is off, which is what makes the
+        // lock screen follow the home wallpaper again (clear(FLAG_LOCK) would reset it to default).
+        scope.launch { WallpaperApplier.applyCurrent(context, force = true) }
 
     }
 
