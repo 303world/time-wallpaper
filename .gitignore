@@ -1,0 +1,12 @@
+org.gradle.jvmargs=-Xmx3072m
+local.properties
+*.iml
+.idea/
+build/
+app/build/
+.gradle/
+captures/
+.DS_Store
+keystore/
+testwall/
+*.jks
