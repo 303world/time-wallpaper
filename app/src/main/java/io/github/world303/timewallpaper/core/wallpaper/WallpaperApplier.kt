@@ -88,16 +88,10 @@ object WallpaperApplier {
                 errors += "桌面壁纸无法解码"
             } else {
                 try {
-                    // When lock is not separate, set BOTH targets in one call. Setting only
-                    // FLAG_SYSTEM leaves a previously customised lock wallpaper untouched — and
-                    // after a clear() it falls back to the system default instead of following
-                    // the home wallpaper.
-                    val flags = if (state.separateLock) {
-                        WallpaperManager.FLAG_SYSTEM
-                    } else {
-                        WallpaperManager.FLAG_SYSTEM or WallpaperManager.FLAG_LOCK
-                    }
-                    wm.setBitmap(bmp, null, true, flags)
+                    // Home only. The lock wallpaper is left completely alone unless the user
+                    // explicitly enabled separate lock-screen wallpapers: writing FLAG_LOCK here
+                    // would silently overwrite whatever lock wallpaper they had chosen.
+                    wm.setBitmap(bmp, null, true, WallpaperManager.FLAG_SYSTEM)
                     appliedAnything = true
                 } catch (t: Throwable) {
                     Log.e(TAG, "set home wallpaper failed", t)
