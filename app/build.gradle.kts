@@ -20,8 +20,8 @@ android {
         applicationId = "io.github.world303.timewallpaper"
         minSdk = 33
         targetSdk = 36
-        versionCode = 4
-        versionName = "1.0.3"
+        versionCode = 5
+        versionName = "1.0.4"
     }
 
     signingConfigs {
@@ -64,6 +64,7 @@ android {
 
 dependencies {
     implementation("androidx.core:core-ktx:1.19.1")
+    implementation("androidx.work:work-runtime-ktx:2.12.0")
     implementation("androidx.activity:activity-compose:1.13.0")
     implementation("androidx.lifecycle:lifecycle-runtime-compose:2.11.0")
     implementation("androidx.exifinterface:exifinterface:1.4.1")
